@@ -11,6 +11,7 @@ on:
 jobs:
   generate-and-send:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: 检出代码
@@ -28,6 +29,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: 运行主程序
+        timeout-minutes: 20
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
@@ -38,7 +40,9 @@ jobs:
           TRENDING_LANGUAGE: ${{ vars.TRENDING_LANGUAGE }}
           TRENDING_SINCE: daily
         run: |
+          echo "开始运行 GitHub Trending AI 总结助手..."
           python main.py
+          echo "程序运行完成！"
 
       - name: 上传报告
         uses: actions/upload-artifact@v4

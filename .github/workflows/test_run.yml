@@ -1,0 +1,50 @@
+name: 测试运行（5个项目）
+
+on:
+  # 仅支持手动触发
+  workflow_dispatch:
+
+jobs:
+  test-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v3
+
+      - name: 设置 Python 环境
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: 安装依赖
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 测试运行（5个项目）
+        timeout-minutes: 10
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          TRENDING_LANGUAGE: ${{ vars.TRENDING_LANGUAGE }}
+          TRENDING_SINCE: daily
+        run: |
+          echo "=== 开始测试运行 ==="
+          echo "模式: 测试（5个项目，发送邮件）"
+          python main.py --test
+          echo "=== 测试完成 ==="
+
+      - name: 上传报告
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-report
+          path: reports/*.md
+          retention-days: 7

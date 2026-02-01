@@ -1,9 +1,9 @@
 name: GitHub Trending 每日总结
 
 on:
-  # 每天北京时间上午9点运行 (UTC时间凌晨1点)
+  # 每天北京时间凌晨1点运行 (UTC时间前一天下午17点)
   schedule:
-    - cron: '0 1 * * *'
+    - cron: '0 17 * * *'
 
   # 支持手动触发
   workflow_dispatch:

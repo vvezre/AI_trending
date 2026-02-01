@@ -1,0 +1,15 @@
+# GitHub Trending AI Digest - Dependencies
+
+# Web scraping
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=5.1.0
+
+# AI API
+openai>=1.12.0
+
+# Email and config
+python-dotenv>=1.0.0
+
+# Date handling
+python-dateutil>=2.8.2

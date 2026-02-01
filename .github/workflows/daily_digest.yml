@@ -1,0 +1,49 @@
+name: GitHub Trending 每日总结
+
+on:
+  # 每天北京时间上午9点运行 (UTC时间凌晨1点)
+  schedule:
+    - cron: '0 1 * * *'
+
+  # 支持手动触发
+  workflow_dispatch:
+
+jobs:
+  generate-and-send:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v3
+
+      - name: 设置 Python 环境
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: 安装依赖
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 运行主程序
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          TRENDING_LANGUAGE: ${{ vars.TRENDING_LANGUAGE }}
+          TRENDING_SINCE: daily
+        run: |
+          python main.py
+
+      - name: 上传报告
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: trending-report
+          path: reports/*.md
+          retention-days: 30

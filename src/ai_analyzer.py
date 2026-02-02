@@ -1,38 +1,119 @@
 """
-AI 分析引擎模块 - 使用 DeepSeek API
+AI 分析引擎模块 - 支持多种 AI 模型
 """
-from openai import OpenAI
-from typing import List, Dict
-import json
 import os
+import json
+from typing import List, Dict, Optional, Any
+
+# 导入 SDK
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
+
+try:
+    import anthropic
+except ImportError:
+    anthropic = None
+
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
 
 
-class DeepSeekAnalyzer:
-    """DeepSeek AI 分析器"""
+# 定义支持的 API 提供商配置
+AI_PROVIDERS = {
+    # 兼容 OpenAI SDK 的提供商
+    "deepseek": {
+        "base_url": "https://api.deepseek.com",
+        "model": "deepseek-chat",
+        "env_key": "DEEPSEEK_API_KEY", # 兼容旧配置
+        "api_type": "openai"
+    },
+    "glm": {
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "model": "glm-4-flash",
+        "env_key": "GLM_API_KEY",
+        "api_type": "openai"
+    },
+    "kimi": {
+        "base_url": "https://api.moonshot.cn/v1",
+        "model": "moonshot-v1-8k",
+        "env_key": "KIMI_API_KEY",
+        "api_type": "openai"
+    },
+    "openai": {
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-4o-mini",
+        "env_key": "OPENAI_API_KEY",
+        "api_type": "openai"
+    },
+    
+    # 使用专用 SDK 的提供商
+    "claude": {
+        "model": "claude-3-haiku-20240307",
+        "env_key": "ANTHROPIC_API_KEY",
+        "api_type": "anthropic"
+    },
+    "gemini": {
+        "model": "gemini-1.5-flash",
+        "env_key": "GOOGLE_API_KEY",
+        "api_type": "gemini"
+    }
+}
 
-    def __init__(self, api_key: str, api_base: str = "https://api.deepseek.com"):
+
+class AIAnalyzer:
+    """通用 AI 分析器基类"""
+
+    def __init__(self, provider: str, api_key: str, api_base: Optional[str] = None, model: Optional[str] = None):
         """
         初始化分析器
 
         Args:
-            api_key: DeepSeek API密钥
-            api_base: API基础URL
+            provider: 提供商名称 (deepseek, glm, kimi, openai, claude, gemini)
+            api_key: API 密钥
+            api_base: 自定义 API 基础 URL (可选)
+            model: 自定义模型名称 (可选)
         """
-        self.client = OpenAI(
-            api_key=api_key,
-            base_url=api_base
-        )
-        self.model = "deepseek-chat"
+        self.provider = provider.lower()
+        self.api_key = api_key
+        
+        # 获取提供商默认配置
+        config = AI_PROVIDERS.get(self.provider, AI_PROVIDERS["deepseek"])
+        
+        self.api_base = api_base or config.get("base_url")
+        self.model = model or config.get("model")
+        self.api_type = config.get("api_type", "openai")
+        
+        # 初始化客户端
+        self.client = self._init_client()
+
+    def _init_client(self) -> Any:
+        """初始化对应的 API 客户端"""
+        if self.api_type == "openai":
+            if not OpenAI:
+                raise ImportError("OpenAI SDK 未安装，请运行 pip install openai")
+            return OpenAI(api_key=self.api_key, base_url=self.api_base)
+            
+        elif self.api_type == "anthropic":
+            if not anthropic:
+                raise ImportError("Anthropic SDK 未安装，请运行 pip install anthropic")
+            return anthropic.Anthropic(api_key=self.api_key)
+            
+        elif self.api_type == "gemini":
+            if not genai:
+                raise ImportError("Google Generative AI SDK 未安装，请运行 pip install google-generativeai")
+            genai.configure(api_key=self.api_key)
+            return genai.GenerativeModel(self.model)
+            
+        else:
+            raise ValueError(f"不支持的 API 类型: {self.api_type}")
 
     def analyze_trending(self, repos: List[Dict]) -> str:
         """
-        分析GitHub Trending项目
-
-        Args:
-            repos: 项目列表
-
-        Returns:
-            分析报告（markdown格式）
+        分析 GitHub Trending 项目
         """
         if not repos:
             return "今日暂无趋势项目"
@@ -40,34 +121,65 @@ class DeepSeekAnalyzer:
         # 构建项目数据摘要
         repos_summary = self._build_repos_summary(repos)
 
-        # 调用AI进行分析
+        # 构建提示词
         prompt = self._build_analysis_prompt(repos_summary)
 
         try:
-            print("正在调用DeepSeek API进行分析...")
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "你是一位资深的技术专家和开源社区观察者，擅长分析技术趋势和项目价值。"
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                temperature=0.7,
-                max_tokens=2000
-            )
-
-            analysis = response.choices[0].message.content
-            print("AI分析完成！")
-            return analysis
+            print(f"正在调用 {self.provider} ({self.model}) 进行分析...")
+            
+            if self.api_type == "openai":
+                return self._call_openai(prompt)
+            elif self.api_type == "anthropic":
+                return self._call_claude(prompt)
+            elif self.api_type == "gemini":
+                return self._call_gemini(prompt)
+            else:
+                return "错误: 未知的 API 类型"
 
         except Exception as e:
             print(f"AI分析失败: {e}")
+            import traceback
+            traceback.print_exc()
             return self._generate_fallback_report(repos)
+
+    def _call_openai(self, prompt: str) -> str:
+        """调用 OpenAI 兼容接口"""
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "你是一位资深的技术专家和开源社区观察者，擅长分析技术趋势和项目价值。"
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.7,
+            max_tokens=2000
+        )
+        return response.choices[0].message.content
+
+    def _call_claude(self, prompt: str) -> str:
+        """调用 Claude 接口"""
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=2000,
+            temperature=0.7,
+            system="你是一位资深的技术专家和开源社区观察者，擅长分析技术趋势和项目价值。",
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return response.content[0].text
+
+    def _call_gemini(self, prompt: str) -> str:
+        """调用 Gemini 接口"""
+        # Gemini 没有 system prompt 参数，直接加在 prompt 前面
+        full_prompt = "你是一位资深的技术专家和开源社区观察者，擅长分析技术趋势和项目价值。\n\n" + prompt
+        response = self.client.generate_content(full_prompt)
+        return response.text
 
     def _build_repos_summary(self, repos: List[Dict]) -> str:
         """构建项目数据摘要"""
@@ -140,78 +252,44 @@ class DeepSeekAnalyzer:
         return "\n".join(report_lines)
 
     def generate_summary(self, repos: List[Dict], max_repos: int = 25) -> str:
-        """
-        生成完整的分析报告
-
-        Args:
-            repos: 项目列表
-            max_repos: 分析的最大项目数
-
-        Returns:
-            完整的markdown格式报告
-        """
-        # 限制分析的项目数量
+        """生成完整的分析报告"""
         repos_to_analyze = repos[:max_repos]
 
-        # 添加报告头部
         header = f"""# 🚀 GitHub Trending 今日观察
 
 > 数据时间: {self._get_current_date()}
+> AI 模型: {self.provider} ({self.model})
 > 分析项目数: {len(repos_to_analyze)}
 
 ---
 
 """
-
-        # 生成AI分析
         analysis = self.analyze_trending(repos_to_analyze)
-
-        # 组合完整报告
-        full_report = header + analysis
-
-        return full_report
+        return header + analysis
 
     def _get_current_date(self) -> str:
-        """获取当前日期"""
         from datetime import datetime
         return datetime.now().strftime("%Y年%m月%d日")
 
 
+def create_analyzer(provider: str, api_key: str, api_base: Optional[str] = None):
+    """工厂函数"""
+    return AIAnalyzer(provider, api_key, api_base)
+
+
 def test_analyzer():
-    """测试AI分析器"""
-    # 模拟数据
-    mock_repos = [
-        {
-            "name": "openai / gpt-4",
-            "url": "https://github.com/openai/gpt-4",
-            "language": "Python",
-            "stars": "15000",
-            "stars_today": "1500",
-            "forks": "2000",
-            "description": "GPT-4 API官方Python库"
-        },
-        {
-            "name": "vercel / next.js",
-            "url": "https://github.com/vercel/next.js",
-            "language": "JavaScript",
-            "stars": "120000",
-            "stars_today": "800",
-            "forks": "25000",
-            "description": "React框架，支持SSR和静态生成"
-        }
-    ]
-
-    # 需要设置环境变量 DEEPSEEK_API_KEY
-    api_key = os.getenv("DEEPSEEK_API_KEY", "your-api-key-here")
-
-    if api_key == "your-api-key-here":
-        print("请设置环境变量 DEEPSEEK_API_KEY")
-        return
-
-    analyzer = DeepSeekAnalyzer(api_key=api_key)
-    report = analyzer.generate_summary(mock_repos)
-    print(report)
-
+    """测试函数"""
+    print("支持的提供商:", list(AI_PROVIDERS.keys()))
+    
+    # 简单的 mock 测试
+    mock_repos = [{"name": "test/repo", "url": "https://github.com/options", "language": "Python", "stars": "100", "stars_today": "10", "forks": "5", "description": "Test repo"}]
+    
+    # 模拟初始化（不实际调用）
+    try:
+        analyzer = AIAnalyzer("deepseek", "test_key")
+        print(f"初始化成功: {analyzer.provider} - {analyzer.model}")
+    except Exception as e:
+        print(f"初始化失败: {e}")
 
 if __name__ == "__main__":
     test_analyzer()

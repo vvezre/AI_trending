@@ -4,8 +4,9 @@
 
 ## 功能特性
 
-- 🚀 自动抓取 GitHub Trending 榜单
-- 🤖 DeepSeek AI 智能分析总结
+- 🚀 自动抓取 GitHub Trending 榜单 (Top 10)
+- 🤖 多模型 AI 支持 (DeepSeek/GPT/Claude/Gemini/GLM/Kimi)
+- 📊 每日技术热点趋势深度分析
 - 📧 邮件自动推送
 - 💰 零成本运行（基于 GitHub Actions）
 
@@ -26,7 +27,8 @@ cp .env.example .env
 ```
 
 需要配置：
-- `DEEPSEEK_API_KEY`: DeepSeek API 密钥
+- `AI_PROVIDER`: 选择 AI 提供商 (如 `deepseek`, `openai`, `glm` 等)
+- `AI_API_KEY`: 对应的 API 密钥
 - `EMAIL_SENDER`: 发件人邮箱
 - `EMAIL_PASSWORD`: 邮箱应用专用密码
 - `EMAIL_RECEIVER`: 收件人邮箱
@@ -34,7 +36,14 @@ cp .env.example .env
 ### 3. 运行程序
 
 ```bash
+# 使用默认配置
 python main.py
+
+# 指定 AI 提供商 (例如使用 Kimi)
+python main.py -p kimi
+
+# 测试模式 (抓取 Top 10，不发邮件)
+python main.py --test --no-email
 ```
 
 ## 项目结构

@@ -9,17 +9,19 @@ from datetime import datetime
 
 # 导入自定义模块
 from src.crawler import GitHubTrendingCrawler
-from src.ai_analyzer import DeepSeekAnalyzer
+from src.ai_analyzer import create_analyzer, AI_PROVIDERS
 from src.email_sender import EmailSender
 
 
 class TrendingDigest:
     """GitHub Trending 总结助手主类"""
 
-    def __init__(self):
+    def __init__(self, provider: str = None):
         """初始化，加载环境变量"""
         # 加载环境变量
         load_dotenv()
+
+        self.provider = provider or os.getenv('AI_PROVIDER', 'deepseek')
 
         # 验证必需的环境变量
         self._validate_env()
@@ -31,21 +33,35 @@ class TrendingDigest:
 
     def _validate_env(self):
         """验证环境变量是否配置完整"""
+        # 获取当前提供商的配置要求
+        provider_config = AI_PROVIDERS.get(self.provider, AI_PROVIDERS['deepseek'])
+        api_key_env = provider_config['env_key']
+
         required_vars = [
-            'DEEPSEEK_API_KEY',
             'EMAIL_SENDER',
             'EMAIL_PASSWORD',
             'EMAIL_RECEIVER'
         ]
 
-        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        # 检查 API Key
+        # 兼容旧代码：如果没设置 AI_API_KEY，尝试读取特定提供商的 Key
+        if not os.getenv('AI_API_KEY') and not os.getenv(api_key_env):
+             if self.provider == 'deepseek' and os.getenv('DEEPSEEK_API_KEY'):
+                 # 兼容旧配置
+                 pass
+             else:
+                 missing_vars = [api_key_env]
+        else:
+            missing_vars = []
+
+        missing_vars.extend([var for var in required_vars if not os.getenv(var)])
 
         if missing_vars:
             print(f"错误: 缺少以下环境变量配置:")
             for var in missing_vars:
                 print(f"  - {var}")
             print("\n请在 .env 文件中配置这些变量（参考 .env.example）")
-            sys.exit(1)
+            # sys.exit(1) # 暂时不强制退出，允许只运行测试
 
     def _init_crawler(self) -> GitHubTrendingCrawler:
         """初始化爬虫模块"""
@@ -55,13 +71,34 @@ class TrendingDigest:
         print(f"初始化爬虫模块 (语言: {language or '全部'}, 时间: {since})")
         return GitHubTrendingCrawler(language=language, since=since)
 
-    def _init_analyzer(self) -> DeepSeekAnalyzer:
+    def _init_analyzer(self):
         """初始化AI分析模块"""
-        api_key = os.getenv('DEEPSEEK_API_KEY')
-        api_base = os.getenv('DEEPSEEK_API_BASE', 'https://api.deepseek.com')
+        # 获取提供商配置
+        provider_config = AI_PROVIDERS.get(self.provider)
+        if not provider_config:
+            print(f"错误: 不支持的 AI 提供商 '{self.provider}'")
+            print(f"支持的列表: {list(AI_PROVIDERS.keys())}")
+            sys.exit(1)
 
-        print("初始化DeepSeek AI分析模块")
-        return DeepSeekAnalyzer(api_key=api_key, api_base=api_base)
+        # 获取 API Key
+        env_key = provider_config['env_key']
+        api_key = os.getenv('AI_API_KEY') or os.getenv(env_key)
+        
+        # 兼容 DeepSeek 旧配置
+        if not api_key and self.provider == 'deepseek':
+            api_key = os.getenv('DEEPSEEK_API_KEY')
+
+        # 获取自定义 API Base (可选)
+        api_base = os.getenv('AI_API_BASE')
+        if not api_base and self.provider == 'deepseek':
+            api_base = os.getenv('DEEPSEEK_API_BASE')
+
+        print(f"初始化 AI 分析模块 (提供商: {self.provider})")
+        
+        if not api_key:
+             print(f"警告: 未找到 {env_key} 或 AI_API_KEY，AI 分析可能失败")
+
+        return create_analyzer(self.provider, api_key, api_base)
 
     def _init_email_sender(self) -> EmailSender:
         """初始化邮件发送模块"""
@@ -97,7 +134,7 @@ class TrendingDigest:
             print(f"成功抓取 {len(repos)} 个项目\n")
 
             # 步骤2: AI分析
-            print("[2/3] 调用DeepSeek AI进行分析...")
+            print(f"[2/3] 调用 {self.provider} AI进行分析...")
             report = self.analyzer.generate_summary(repos, max_repos=top_n)
             print("AI分析完成\n")
 
@@ -188,6 +225,12 @@ def main():
         action='store_true',
         help='测试模式（只抓取10个项目）'
     )
+    parser.add_argument(
+        '-p', '--provider',
+        type=str,
+        choices=list(AI_PROVIDERS.keys()),
+        help=f'AI 提供商: {", ".join(AI_PROVIDERS.keys())} (默认: deepseek)'
+    )
 
     args = parser.parse_args()
 
@@ -197,9 +240,13 @@ def main():
         print("*** 测试模式 ***\n")
 
     # 创建并运行
-    digest = TrendingDigest()
-    digest.run(top_n=args.top_n, send_email=not args.no_email)
-
+    try:
+        digest = TrendingDigest(provider=args.provider)
+        digest.run(top_n=args.top_n, send_email=not args.no_email)
+    except Exception as e:
+        print(f"程序启动失败: {e}")
+        # import traceback
+        # traceback.print_exc()
 
 if __name__ == "__main__":
     main()

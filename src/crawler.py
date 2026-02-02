@@ -147,9 +147,9 @@ class GitHubTrendingCrawler:
 def test_crawler():
     """测试爬虫功能"""
     crawler = GitHubTrendingCrawler(language="", since="daily")
-    repos = crawler.get_top_n(5)
+    repos = crawler.get_top_n(10)
 
-    print("\n=== GitHub Trending Top 5 ===\n")
+    print("\n=== GitHub Trending Top 10 ===\n")
     for i, repo in enumerate(repos, 1):
         print(f"{i}. {repo['name']}")
         print(f"   URL: {repo['url']}")

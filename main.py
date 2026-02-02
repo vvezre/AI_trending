@@ -186,14 +186,14 @@ def main():
     parser.add_argument(
         '--test',
         action='store_true',
-        help='测试模式（只抓取5个项目）'
+        help='测试模式（只抓取10个项目）'
     )
 
     args = parser.parse_args()
 
     # 测试模式
     if args.test:
-        args.top_n = 5
+        args.top_n = 10
         print("*** 测试模式 ***\n")
 
     # 创建并运行

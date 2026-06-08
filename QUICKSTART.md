@@ -35,6 +35,9 @@ SMTP_PORT=587
 ```bash
 # 测试模式（只抓取5个项目，不发邮件）
 python main.py --test --no-email
+
+# 具身智能资讯测试模式（抓取10条资讯，不发邮件）
+python main.py --mode embodied-news --test --no-email
 ```
 
 如果看到类似输出，说明运行成功：
@@ -87,8 +90,22 @@ python main.py --no-email
 # 测试模式
 python main.py --test
 
+# 具身智能资讯模式
+python main.py --mode embodied-news --no-email
+
 # 查看帮助
 python main.py --help
+```
+
+## 具身智能资讯配置
+
+默认会抓取 Google News、arXiv Robotics、IEEE Spectrum Robotics 等 RSS 源，并用具身智能、机器人、人形机器人、embodied AI、robotics、humanoid robot、VLA 等关键词过滤。
+
+如需自定义资讯源和关键词，可以在 `.env` 中添加：
+
+```ini
+NEWS_SOURCES=Google News=https://news.google.com/rss/search?q=%22embodied%20AI%22|arXiv Robotics=https://export.arxiv.org/rss/cs.RO
+NEWS_KEYWORDS=具身智能,人形机器人,embodied ai,humanoid robot,VLA
 ```
 
 ## 常见问题

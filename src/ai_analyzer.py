@@ -3,6 +3,7 @@ AI 分析引擎模块 - 支持多种 AI 模型
 """
 import os
 import json
+import warnings
 from typing import List, Dict, Optional, Any
 
 # 导入 SDK
@@ -17,7 +18,9 @@ except ImportError:
     anthropic = None
 
 try:
-    import google.generativeai as genai
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        import google.generativeai as genai
 except ImportError:
     genai = None
 
@@ -92,6 +95,9 @@ class AIAnalyzer:
 
     def _init_client(self) -> Any:
         """初始化对应的 API 客户端"""
+        if not self.api_key:
+            return None
+
         if self.api_type == "openai":
             if not OpenAI:
                 raise ImportError("OpenAI SDK 未安装，请运行 pip install openai")
@@ -125,6 +131,9 @@ class AIAnalyzer:
         prompt = self._build_analysis_prompt(repos_summary)
 
         try:
+            if self.client is None:
+                return self._generate_fallback_report(repos)
+
             print(f"正在调用 {self.provider} ({self.model}) 进行分析...")
             
             if self.api_type == "openai":
@@ -235,6 +244,91 @@ class AIAnalyzer:
 """
         return prompt.strip()
 
+    def analyze_news(self, items: List[Dict]) -> str:
+        """分析具身智能资讯条目"""
+        if not items:
+            return "今日暂无具身智能相关资讯"
+
+        news_summary = self._build_news_summary(items)
+        prompt = self._build_news_prompt(news_summary)
+
+        try:
+            if self.client is None:
+                return self._generate_news_fallback_report(items)
+
+            print(f"正在调用 {self.provider} ({self.model}) 分析具身智能资讯...")
+
+            if self.api_type == "openai":
+                return self._call_openai(prompt)
+            elif self.api_type == "anthropic":
+                return self._call_claude(prompt)
+            elif self.api_type == "gemini":
+                return self._call_gemini(prompt)
+            else:
+                return "错误: 未知的 API 类型"
+
+        except Exception as e:
+            print(f"AI资讯分析失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return self._generate_news_fallback_report(items)
+
+    def _build_news_summary(self, items: List[Dict]) -> str:
+        """构建资讯数据摘要"""
+        summary_lines = []
+
+        for i, item in enumerate(items, 1):
+            keywords = ", ".join(item.get("matched_keywords", [])) or "未标注"
+            summary = f"""
+{i}. **{item['title']}**
+   - 来源: {item.get('source', 'Unknown')}
+   - 时间: {item.get('published_at', 'Unknown')}
+   - URL: {item['url']}
+   - 命中关键词: {keywords}
+   - 摘要: {item.get('summary', '')}
+"""
+            summary_lines.append(summary.strip())
+
+        return "\n\n".join(summary_lines)
+
+    def _build_news_prompt(self, news_summary: str) -> str:
+        """构建具身智能资讯分析提示词"""
+        prompt = f"""
+请分析以下具身智能、机器人和相关 AI 技术资讯，并输出一份中文日报。
+
+## 待分析资讯：
+
+{news_summary}
+
+## 分析要求：
+
+请按照以下格式输出，专业、简练、避免夸大：
+
+### 今日要闻
+- 选出最值得关注的 3-5 条资讯
+- 每条说明为什么重要
+
+### 技术趋势
+- 总结这些资讯体现出的具身智能技术方向
+- 重点关注机器人基础模型、VLA、世界模型、仿真到现实迁移、多模态感知与控制
+
+### 公司与产品动态
+- 梳理公司、产品、平台或商业化相关信息
+- 如果没有明显公司动态，说明暂无明确商业化信号
+
+### 论文与开源项目
+- 梳理论文、开源模型、数据集、工具链
+- 如果没有相关条目，说明暂无明显论文或开源项目
+
+### 值得继续跟踪
+- 给出 3 个后续观察点
+
+---
+
+请直接输出分析报告，不要有额外说明。
+"""
+        return prompt.strip()
+
     def _generate_fallback_report(self, repos: List[Dict]) -> str:
         """生成备用报告（当AI调用失败时）"""
         report_lines = [
@@ -248,6 +342,24 @@ class AIAnalyzer:
             report_lines.append(f"- **星标**: {repo['stars']} (今日+{repo['stars_today']})")
             report_lines.append(f"- **描述**: {repo['description']}")
             report_lines.append(f"- **链接**: {repo['url']}\n")
+
+        return "\n".join(report_lines)
+
+    def _generate_news_fallback_report(self, items: List[Dict]) -> str:
+        """生成资讯备用报告（当AI调用失败时）"""
+        report_lines = [
+            "# 具身智能最新资讯\n",
+            "## 资讯列表\n"
+        ]
+
+        for i, item in enumerate(items, 1):
+            keywords = ", ".join(item.get("matched_keywords", [])) or "未标注"
+            report_lines.append(f"### {i}. {item['title']}")
+            report_lines.append(f"- **来源**: {item.get('source', 'Unknown')}")
+            report_lines.append(f"- **时间**: {item.get('published_at', 'Unknown')}")
+            report_lines.append(f"- **关键词**: {keywords}")
+            report_lines.append(f"- **摘要**: {item.get('summary', '')}")
+            report_lines.append(f"- **链接**: {item['url']}\n")
 
         return "\n".join(report_lines)
 
@@ -265,6 +377,22 @@ class AIAnalyzer:
 
 """
         analysis = self.analyze_trending(repos_to_analyze)
+        return header + analysis
+
+    def generate_news_summary(self, items: List[Dict], max_items: int = 25) -> str:
+        """生成具身智能资讯分析报告"""
+        items_to_analyze = items[:max_items]
+
+        header = f"""# 具身智能最新资讯
+
+> 数据时间: {self._get_current_date()}
+> AI 模型: {self.provider} ({self.model})
+> 分析资讯数: {len(items_to_analyze)}
+
+---
+
+"""
+        analysis = self.analyze_news(items_to_analyze)
         return header + analysis
 
     def _get_current_date(self) -> str:
